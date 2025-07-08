@@ -1,18 +1,17 @@
-use iroh::{endpoint::ConnectionError, RelayMode, SecretKey, NodeId};
-use iroh::endpoint::{Endpoint, Connection, RecvStream, SendStream};
-use serde::{Serialize, Deserialize};
-use anyhow::{Result, Context};
-use std::time::SystemTime;
-use sled;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use anyhow::{Context, Result};
+use iroh::endpoint::{Connection, Endpoint, RecvStream, SendStream};
 use iroh::RelayMap;
 use iroh::RelayUrl;
-use url::Url;
-use tauri::Emitter;
+use iroh::{endpoint::ConnectionError, NodeId, RelayMode, SecretKey};
+use serde::{Deserialize, Serialize};
+use sled;
+use std::time::SystemTime;
 use tauri::AppHandle;
+use tauri::Emitter;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use url::Url;
 const MAX_STREAM_SIZE: usize = 1024 * 1024; // 1MB
-const RELAY_SERVER: &str = "http://0.0.0.0:3340";
-
+const RELAY_SERVER: &str = "http://192.168.100.34:3340";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerConnection {
@@ -24,14 +23,14 @@ pub struct PeerConnection {
 
 #[derive(Clone)]
 pub struct P2PClient {
-    endpoint: Endpoint,
+    pub endpoint: Endpoint,
     peers_tree: sled::Db,
 }
 
 #[derive(serde::Serialize, Clone)]
 struct MessageEvent {
     sender: String,
-    content: String,:
+    content: String,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -40,7 +39,6 @@ struct ConnectionEvent {
     status: String, // "connected" or "disconnected"
 }
 
-
 impl P2PClient {
     pub async fn new(data_dir: &str) -> Result<Self> {
         let mut rng = rand::rngs::OsRng;
@@ -48,18 +46,18 @@ impl P2PClient {
 
         let endpoint = Endpoint::builder()
             // .discovery_n0()
-            .relay_mode(RelayMode::Custom(RelayMap::from(
-                RelayUrl::from(Url::parse(RELAY_SERVER)?),
-            )))
+            .relay_mode(RelayMode::Custom(RelayMap::from(RelayUrl::from(
+                Url::parse(RELAY_SERVER)?,
+            ))))
             .secret_key(secret_key)
             .bind()
             .await?;
 
-        // let mut builder = iroh::protocol::Router::builder(endpoint);
-        // let router = builder.spawn();
-
         let peers_tree = sled::open(format!("{}/peers", data_dir))?;
-        Ok(Self { endpoint, peers_tree })
+        Ok(Self {
+            endpoint,
+            peers_tree,
+        })
     }
 
     pub fn get_node_id(&self) -> NodeId {
@@ -71,16 +69,22 @@ impl P2PClient {
     }
 
     pub async fn start(&self, app_handle: AppHandle) -> Result<()> {
-        println!("🌐 Started node tauri: {}", self.get_node_id());
-        println!("🔗 Relay tauri: {}", RELAY_SERVER);
+        println!("🌐 Started node: {}", self.get_node_id());
+        println!("🔗 Relay: {}", RELAY_SERVER);
 
+        let _ = app_handle.emit(
+            "connection",
+            ConnectionEvent {
+                peer_id: "node_id".to_string(),
+                status: "connected".to_string(),
+            },
+        );
         while let Some(connecting) = self.endpoint.accept().await {
             let this = self.clone();
             let app_handle = app_handle.clone();
             tokio::spawn(async move {
                 if let Ok(conn) = connecting.await {
-                    println!("tauri tauri tauri Connecting workds");
-                   if let Err(e) = this.handle_connection(conn, app_handle).await {
+                    if let Err(e) = this.handle_connection(conn, app_handle).await {
                         eprintln!("Connection error: {:?}", e);
                     }
                 }
@@ -98,16 +102,23 @@ impl P2PClient {
         Ok(())
     }
 
-    async fn handle_connection(&self, connection: Connection, app_handle: AppHandle) -> Result<()> {
+    pub async fn handle_connection(
+        &self,
+        connection: Connection,
+        app_handle: AppHandle,
+    ) -> Result<()> {
         let peer_id = connection.remote_node_id().context("Missing peer ID")?;
-        println!("🔌tauri  Connection from: {:?}", peer_id);
-        
+        println!("🔌 Connection from: {:?}", peer_id);
+
         // Emit connection event
-        let _ = app_handle.emit("connection", ConnectionEvent {
-            peer_id: peer_id.to_string(),
-            status: "connected".to_string(),
-        });
-        
+        let _ = app_handle.emit(
+            "connection",
+            ConnectionEvent {
+                peer_id: peer_id.to_string(),
+                status: "connected".to_string(),
+            },
+        );
+
         self.update_peer(peer_id).await?;
 
         loop {
@@ -116,7 +127,6 @@ impl P2PClient {
                     let this = self.clone();
                     let peer_id = peer_id;
                     let app_handle = app_handle.clone();
-                    println!("tauri  accept uni {:?}: ", peer_id );
                     tokio::spawn(async move {
                         if let Err(e) = this.handle_uni_stream(stream, peer_id, app_handle).await {
                             eprintln!("Uni stream error: {:?}", e);
@@ -127,7 +137,6 @@ impl P2PClient {
                     let this = self.clone();
                     let peer_id = peer_id;
                     let app_handle = app_handle.clone();
-                    println!("tauri  accept bi {:?}: ", peer_id );
                     tokio::spawn(async move {
                         if let Err(e) = this.handle_bi_stream(send, recv, peer_id, app_handle).await {
                             eprintln!("Bi stream error: {:?}", e);
@@ -135,8 +144,8 @@ impl P2PClient {
                     });
                 },
                 Ok(data) = connection.read_datagram() => {
-                    println!("📨 tauri Datagram from {:?}: {} bytes", peer_id, data.len());
-                    
+                    println!("📨 Datagram from {:?}: {} bytes", peer_id, data.len());
+
                     // Handle datagram as message
                     if let Ok(content) = String::from_utf8(data.to_vec()) {
                         let _ = app_handle.emit("message", MessageEvent {
@@ -152,10 +161,13 @@ impl P2PClient {
 
         println!("🚫 Connection closed: {:?}", peer_id);
         // Emit disconnection event
-        let _ = app_handle.emit("connection", ConnectionEvent {
-            peer_id: peer_id.to_string(),
-            status: "disconnected".to_string(),
-        });
+        let _ = app_handle.emit(
+            "connection",
+            ConnectionEvent {
+                peer_id: peer_id.to_string(),
+                status: "disconnected".to_string(),
+            },
+        );
         Ok(())
     }
 
@@ -163,22 +175,24 @@ impl P2PClient {
         &self,
         mut stream: RecvStream,
         peer_id: NodeId,
-        app_handle: AppHandle
+        app_handle: AppHandle,
     ) -> Result<()> {
-        println!("💬 Uni tauri: handle_uni_stream");
         let mut buf = vec![0; MAX_STREAM_SIZE];
         let n = stream.read(&mut buf).await?;
         buf.truncate(n.expect("MUST HAVE MESSAGE LX"));
         let content = String::from_utf8_lossy(&buf).to_string();
-        
-        println!("💬 Uni tauri: {}", content);
-        
+
+        println!("💬 Uni: {}", content);
+
         // Emit message event
-        let _ = app_handle.emit("message", MessageEvent {
-            sender: peer_id.to_string(),
-            content,
-        });
-        
+        let _ = app_handle.emit(
+            "message",
+            MessageEvent {
+                sender: peer_id.to_string(),
+                content,
+            },
+        );
+
         self.update_peer_message_count(peer_id, 1).await?;
         Ok(())
     }
@@ -188,28 +202,32 @@ impl P2PClient {
         mut send: SendStream,
         mut recv: RecvStream,
         peer_id: NodeId,
-        app_handle: AppHandle
+        app_handle: AppHandle,
     ) -> Result<()> {
         let mut buf = vec![0; MAX_STREAM_SIZE];
         let n = recv.read(&mut buf).await?.min(Some(MAX_STREAM_SIZE));
         buf.truncate(n.expect("BI STREAM MESSAGE MUST EXIST LX"));
         let content = String::from_utf8_lossy(&buf).to_string();
-        
+
         println!("💬 Bi: {}", content);
-        
+
         // Emit message event
-        let _ = app_handle.emit("message", MessageEvent {
-            sender: peer_id.to_string(),
-            content,
-        });
-        
+        let _ = app_handle.emit(
+            "message",
+            MessageEvent {
+                sender: peer_id.to_string(),
+                content,
+            },
+        );
+
         self.update_peer_message_count(peer_id, 1).await?;
 
         let response = format!("ACK from {}!", self.get_node_id());
         send.write_all(response.as_bytes()).await?;
         send.finish()?;
         Ok(())
-    }    async fn update_peer(&self, node_id: NodeId) -> Result<()> {
+    }
+    async fn update_peer(&self, node_id: NodeId) -> Result<()> {
         let key = format!("peer:{}", node_id);
         let now = SystemTime::now();
 
@@ -257,10 +275,7 @@ impl P2PClient {
             .await
             .context("Failed to connect to peer")?;
 
-        let mut stream = conn
-            .open_uni()
-            .await
-            .context("Failed to open uni stream")?;
+        let mut stream = conn.open_uni().await.context("Failed to open uni stream")?;
 
         stream
             .write_all(content.as_bytes())
@@ -273,4 +288,3 @@ impl P2PClient {
         Ok(())
     }
 }
-
