@@ -1,0 +1,60 @@
+[package]
+name = "lx-example-testing-purpose"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "lx_example_testing_purpose_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-geolocation = "2.0.0"
+tauri-plugin-store = "2"
+tauri-plugin-pinia = "3"
+tauri-plugin-http = "2"
+
+# Iroh for P2P networking
+iroh = { version = "0.90", features = [] }
+iroh-gossip = "0.90"
+
+# Sled for persistent storage
+sled = "0.34"
+
+# Automerge for CRDT synchronization
+automerge = "0.6"
+
+# Ed25519 for digital signatures
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+rand = "0.8"
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utilities
+anyhow = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+hex = "0.4"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+futures = "0.3"
+url = "2.5.4"
+
+
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-app-events = "0.2"

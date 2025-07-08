@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P2P Client</title>
+  <style>
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      padding: 25px;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 25px;
+    }
+    .section {
+      margin-bottom: 30px;
+      padding: 20px;
+      border-radius: 8px;
+      background: #f8f9fa;
+    }
+    .section-title {
+      font-size: 1.2rem;
+      color: #3498db;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title svg {
+      width: 24px;
+      height: 24px;
+      fill: currentColor;
+    }
+    .btn {
+      padding: 10px 20px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.3s;
+    }
+    .btn:hover {
+      background: #2980b9;
+    }
+    .btn:disabled {
+      background: #bdc3c7;
+      cursor: not-allowed;
+    }
+    input {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      width: 100%;
+      margin-bottom: 15px;
+      font-size: 16px;
+    }
+    input:focus {
+      outline: none;
+      border-color: #3498db;
+      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+    }
+    .form-row {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 15px;
+    }
+    .form-group {
+      flex: 1;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+      color: #2c3e50;
+    }
+    .info-box {
+      padding: 15px;
+      background: #e8f4ff;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-family: monospace;
+      word-break: break-all;
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    .status-connected {
+      background: #2ecc71;
+    }
+    .status-disconnected {
+      background: #e74c3c;
+    }
+    .connection-item {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    .connection-item:last-child {
+      border-bottom: none;
+    }
+    .message-item {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+      background: #f8f9fa;
+      margin-bottom: 5px;
+      border-radius: 5px;
+    }
+    .message-sender {
+      font-weight: 600;
+      color: #3498db;
+    }
+    .hidden {
+      display: none;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 1.1rem;
+      color: #2c3e50;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Peer-to-Peer Connection LX 2</h1>
+    
+    <div class="card">
+      <div class="card-title">Client Initialization</div>
+      <button id="init-btn" class="btn">Initialize P2P Client</button>
+      <div id="node-info" class="hidden">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Your IP Address:</label>
+            <div class="info-box" id="your-ip">192.168.1.5</div>
+          </div>
+          <div class="form-group">
+            <label>Your Port:</label>
+            <div class="info-box" id="your-port">4567</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Your Node ID:</label>
+          <div class="info-box" id="node-id">k51qzi5uqu5d1234567890abcdefg</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-title">Connect to Peer</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="peer-ip">Peer IP Address</label>
+          <input type="text" id="peer-ip" placeholder="192.168.1.10">
+        </div>
+        <div class="form-group">
+          <label for="peer-port">Peer Port</label>
+          <input type="number" id="peer-port" placeholder="4567">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="peer-id">Peer Node ID</label>
+        <input type="text" id="peer-id" placeholder="k51qzi5uqu5dabcdefg1234567890">
+      </div>
+      <button id="connect-btn" class="btn">Connect to Peer</button>
+    </div>
+    
+    <div class="card">
+      <div class="card-title">Send Message</div>
+      <div class="form-group">
+        <label for="message-content">Message Content</label>
+        <input type="text" id="message-content" placeholder="Type your message">
+      </div>
+      <button id="send-btn" class="btn">Send Message</button>
+    </div>
+    
+    <div class="card">
+      <div class="card-title">Active Connections</div>
+      <div id="connections-container">
+        <div id="connections-list"></div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div class="card-title">Received Messages</div>
+      <div id="received-messages">
+        <div id="messages-list"></div>
+      </div>
+    </div>
+  </div>
+
+    <script src="./main.js" type="module"></script>
+   
+</body>
+</html>
