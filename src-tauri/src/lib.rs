@@ -1,5 +1,6 @@
 mod commands;
 pub mod p2p_client;
+pub mod node;
 
 // Re-export P2PClient for easier importing elsewhere
 pub use p2p_client::P2PClient;

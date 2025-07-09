@@ -11,6 +11,8 @@ use std::time::SystemTime;
 use tauri::AppHandle;
 use tauri::Emitter;
 use tauri::Manager;
+use n0_future::StreamExt;
+
 use tauri::State;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeInfo {
@@ -40,219 +42,73 @@ struct ConnectionEvent {
     status: String, // "connected" or "disconnected"
 }
 
+
+
 #[tauri::command]
 pub async fn initialize_client(
-    app_handle: AppHandle,
-    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
 ) -> Result<NodeInfo, String> {
-    let mut client_guard = state.client.lock().await;
+    let node = crate::node::LXNode::spawn()
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut events = node.accept_events();
+    let _ = app_handle.emit(
+        "connection",
+        ConnectionEvent {
+            peer_id: node.endpoint().node_id().to_string(),
+            status: "connected".to_string(),
+        },
+    );
+    let node_info = NodeInfo {
+        node_id:  node.endpoint().node_id().to_string(),
+        public_key: "client.get_public_key()".to_string(),
+    };
+    // Background task for emitting events
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = events.next().await {
+            // let _ = app_handle.emit(
+            //     "message",
+            //     MessageEvent {
+            //         sender: peer_id.to_string(),
+            //         content,
+            //     },
+            // );
+            println!("tauri event LXLXL {:?}", event);
+        }
+    });
 
-    if client_guard.is_none() {
-        let mut client = P2PClient::new(state.data_dir.to_str().unwrap())
-            .await
-            .map_err(|e| format!("Failed to initialize P2P client: {}", e))?;
-
-        let node_info = NodeInfo {
-            node_id: client.get_node_id().to_string(),
-            public_key: client.get_public_key(),
-        };
-
-        // Start the client in a background task
-
-        let client_clone = client.clone();
-        let app_handle_clone = app_handle.clone(); // Remove the & here
-        tokio::spawn(async move {
-            if let Err(e) = client_clone.start(app_handle_clone.clone()).await {
-                eprintln!("P2P client error: {}", e);
-                // Emit error to frontend
-                let _ = app_handle_clone.emit("error", format!("P2P client error: {}", e));
-            }
-        });
-
-        *client_guard = Some(client);
-        Ok(node_info)
-    } else {
-        Err("Client already initialized".to_string())
-    }
+   Ok(node_info)
 }
+
 
 #[tauri::command]
 pub async fn send_message(
-    state: State<'_, AppState>,
+    state: tauri::State<'_, AppState>,
     peer_id: String,
     content: String,
 ) -> Result<(), String> {
-    let client_guard = state.client.lock().await;
+    let node = crate::node::LXNode::spawn()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    if let Some(client) = client_guard.as_ref() {
-        let peer_id = peer_id
-            .parse::<NodeId>()
-            .map_err(|e| format!("Invalid peer ID: {}", e))?;
+    let node_id = peer_id
+        .parse::<iroh::NodeId>()
+        .map_err(|e| format!("Invalid peer_id: {}", e))?;
 
-        println!("tauri with peerid, {:?}", peer_id);
-        client
-            .send_message(peer_id, content)
-            .await
-            .map_err(|e| format!("Failed to send message: {}", e))?;
+    let mut events = node.connect(node_id, content);
 
-        Ok(())
-    } else {
-        Err("Client not initialized".to_string())
-    }
-}
+    // Spawn background task for stream processing
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = events.next().await {
+            println!("event {event:?}");
 
-#[tauri::command]
-pub async fn connect_to_peer(
-    app_handle: AppHandle,
-    state: State<'_, AppState>,
-    peer_ip: String,
-    peer_port: u16,
-    peer_id: String,
-) -> Result<(), String> {
-    // Parse inputs
-    let socket_addr: SocketAddr = format!("{}:{}", peer_ip, peer_port)
-        .parse()
-        .map_err(|e| format!("Invalid address: {}", e))?;
-
-    let peer_public_key =
-        PublicKey::from_str(&peer_id).map_err(|e| format!("Invalid peer ID: {}", e))?;
-
-    // Construct direct-only peer address
-    let node_addr = NodeAddr::new(peer_public_key).with_direct_addresses(vec![socket_addr]);
-
-    // Get the endpoint from the client
-    let endpoint = {
-        let client_guard = state.client.lock().await;
-        let client = client_guard.as_ref().ok_or("Client not initialized")?;
-        client.endpoint.clone()
-    };
-
-    // Clone what we need for the async task
-    let app_handle_clone = app_handle.clone();
-    let peer_id_clone = peer_id.clone();
-
-    // Spawn connection in background
-    tokio::spawn(async move {
-        println!("tauri LX LX peer to connect spawned");
-        match endpoint.connect(node_addr, &[]).await {
-
-            Ok(conn) => {
-                // Get client from state to handle connection
-                if let Some(client) = get_client(&app_handle_clone).await {
-                    if let Err(e) = client
-                        .handle_connection(conn, app_handle_clone.clone())
-                        .await
-                    {
-                        println!("tauri LX LX peer to connect failed, {:?}", e);
-                        let _ = app_handle_clone
-                            .emit("error", format!("Connection handler error: {}", e));
-                    } else {
-
-                        println!("tauri LX LX peer to connect Success");
-                        let _ = app_handle_clone.emit("connection", peer_id_clone);
-                    }
-                } else {
-                    println!("tauri LX LX peer to connect Success");
-                    let _ = app_handle_clone.emit("error", "Client not initialized".to_string());
-                }
-            }
-            Err(e) => {
-                println!("tauri LX LX peer failed directly, {:?}", e);
-                let _ = app_handle_clone
-                    .emit("error", format!("Connection failed: {}", e));
-            }
+            println!("tauri ASDF 2 event LXLXL {:?}", event);
+            // You can emit this to frontend if needed
         }
     });
 
     Ok(())
 }
 
-// Helper to get client from state
-async fn get_client(app_handle: &AppHandle) -> Option<P2PClient> {
-    let state: State<AppState> = app_handle.state();
-    let client_guard = state.client.lock().await;
-    client_guard.as_ref().cloned()
-} // #[tauri::command]
-  // pub async fn get_message_history(
-  //     state: State<'_, AppState>,
-  //     peer_id: String,
-  //     limit: u64,
-  // ) -> Result<Vec<MessageHistoryItem>, String> {
-  //     let client_guard = state.client.lock().await;
-  //
-  //     if let Some(client) = client_guard.as_ref() {
-  //         let peer_id = peer_id.parse::<NodeId>()
-  //             .map_err(|e| format!("Invalid peer ID: {}", e))?;
-  //
-  //         let messages = client.get_message_history(peer_id, limit)
-  //             .await
-  //             .map_err(|e| format!("Failed to get message history: {}", e))?;
-  //
-  //         let history: Vec<MessageHistoryItem> = messages
-  //             .into_iter()
-  //             .map(|msg| MessageHistoryItem {
-  //                 id: msg.id,
-  //                 sender: msg.sender.to_string(),
-  //                 recipient: msg.recipient.to_string(),
-  //                 content: msg.content,
-  //                 timestamp: msg.timestamp,
-  //             })
-  //             .collect();
-  //
-  //         Ok(history)
-  //     } else {
-  //         Err("Client not initialized".to_string())
-  //     }
-  // }
-  //
-  // #[tauri::command]
-  // pub async fn get_peer_list(
-  //     state: State<'_, AppState>,
-  // ) -> Result<Vec<PeerInfo>, String> {
-  //     let client_guard = state.client.lock().await;
-  //
-  //     if let Some(client) = client_guard.as_ref() {
-  //         let peers = client.get_peer_list()
-  //             .await
-  //             .map_err(|e| format!("Failed to get peer list: {}", e))?;
-  //
-  //         Ok(peers.into_iter().map(|p| PeerInfo {
-  //             peer_id: p.node_id.to_string(),
-  //             last_seen: p.last_seen,
-  //             message_count: p.message_count,
-  //         }).collect())
-  //     } else {
-  //         Err("Client not initialized".to_string())
-  //     }
-  // }
 
-#[tauri::command]
-pub async fn get_node_info(state: State<'_, AppState>) -> Result<NodeInfo, String> {
-    let client_guard = state.client.lock().await;
-
-    if let Some(client) = client_guard.as_ref() {
-        Ok(NodeInfo {
-            node_id: client.get_node_id().to_string(),
-            public_key: client.get_public_key(),
-        })
-    } else {
-        Err("Client not initialized".to_string())
-    }
-}
-
-// #[tauri::command]
-// pub async fn cleanup_messages(
-//     state: State<'_, AppState>,
-// ) -> Result<(), String> {
-//     let client_guard = state.client.lock().await;
-//
-//     if let Some(client) = client_guard.as_ref() {
-//         client.cleanup_old_messages()
-//             .await
-//             .map_err(|e| format!("Failed to cleanup messages: {}", e))?;
-//
-//         Ok(())
-//     } else {
-//         Err("Client not initialized".to_string())
-//     }
-// }

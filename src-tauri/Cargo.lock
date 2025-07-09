@@ -3146,12 +3146,14 @@ name = "lx-example-testing-purpose"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-channel",
  "automerge",
  "ed25519-dalek",
  "futures",
  "hex",
  "iroh",
  "iroh-gossip",
+ "n0-future",
  "rand 0.8.5",
  "serde",
  "serde_json",
@@ -3165,6 +3167,7 @@ dependencies = [
  "tauri-plugin-pinia",
  "tauri-plugin-store",
  "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-subscriber",
  "url",

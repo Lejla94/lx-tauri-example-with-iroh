@@ -22,7 +22,7 @@ setupEventListeners();
 initBtn.addEventListener('click', async () => {
   try {
     nodeInfo = await invoke('initialize_client');
-    nodeIdSpan.textContent = nodeInfo.node_id;
+    nodeIdSpan.textContent = nodeInfo?.node_id;
     nodeInfoDiv.style.display = 'block';
     console.log('Client initialized:', nodeInfo);
   } catch (err) {
