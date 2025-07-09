@@ -1,4 +1,4 @@
-use crate::{AppState, P2PClient};
+use crate::{AppState};
 use iroh::NodeAddr;
 use iroh::NodeId;
 use iroh::PublicKey;

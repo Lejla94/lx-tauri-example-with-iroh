@@ -1,15 +1,13 @@
 mod commands;
-pub mod p2p_client;
 pub mod node;
 
 // Re-export P2PClient for easier importing elsewhere
-pub use p2p_client::P2PClient;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
 pub struct AppState {
-    client: Arc<Mutex<Option<P2PClient>>>,
+    client: Arc<Mutex<Option<crate::node::LXNode>>>,
     data_dir: PathBuf, // Add data_dir to AppState
 }
 
@@ -56,10 +54,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::initialize_client,
             commands::send_message,
-            commands::connect_to_peer,
-            // commands::get_message_history,
-            // commands::get_peer_list,
-            commands::get_node_info // commands::cleanup_messages
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
